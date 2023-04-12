@@ -12,8 +12,8 @@ import os
 
 import torch
 import torch.utils.data
-# import PLRC.datasets.transforms as transforms
-import transforms
+import PLRC.datasets.transforms as transforms
+# import transforms
 import torchvision as tv
 import torchvision.transforms.functional as tvf
 import io

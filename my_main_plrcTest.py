@@ -29,6 +29,8 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 import numpy as np
 from PLRC.datasets.DAPreDataset import DAPre
+from PLRC.datasets.imagenet import ImageNet
+
 from PLRC.models.builder import PLRC
 
 import wandb
@@ -36,7 +38,7 @@ import wandb
 parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
 
 
-parser.add_argument("--data",default="D:/chu/workspace/dataset/OfficeHomeDataset", help="path to dataset")
+parser.add_argument("--data",default="../OfficeHomeDataset", help="path to dataset")
 parser.add_argument("--dataset",default="OfficeHome")
 parser.add_argument("--testEnv",default=0)
 parser.add_argument(
@@ -181,7 +183,7 @@ parser.add_argument(
     help="balancing factor for image-level contrastive loss",
 )
 parser.add_argument(
-    "--debug", default = False,
+    "--debug", default = True,
     type = bool,
 )
 
@@ -338,7 +340,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
     cudnn.benchmark = True
 
-    train_dataset = DAPre(testEnv=args.testEnv,args=None, path=args.data)
+    # train_dataset = DAPre(testEnv=args.testEnv,args=None, path=args.data)
+    train_dataset = ImageNet(split="train", args=args, path=args.data)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)

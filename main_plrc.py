@@ -27,17 +27,24 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-
+import numpy as np
+from PLRC.datasets.DAPreDataset import DAPre
 from PLRC.datasets.imagenet import ImageNet
+
 from PLRC.models.builder import PLRC
 
+import wandb
 
 parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
-parser.add_argument("data", metavar="DIR", help="path to dataset")
+
+
+parser.add_argument("--data",default="../OfficeHomeDataset", help="path to dataset")
+parser.add_argument("--dataset",default="OfficeHome")
+parser.add_argument("--testEnv",default=0)
 parser.add_argument(
     "-j",
     "--workers",
-    default=32,
+    default=8,
     type=int,
     metavar="N",
     help="number of data loading workers (default: 32)",
@@ -55,7 +62,7 @@ parser.add_argument(
 parser.add_argument(
     "-b",
     "--batch-size",
-    default=256,
+    default=8,
     type=int,
     metavar="N",
     help="mini-batch size (default: 256), this is the total "
@@ -65,7 +72,7 @@ parser.add_argument(
 parser.add_argument(
     "--lr",
     "--learning-rate",
-    default=0.03,
+    default=0.01,
     type=float,
     metavar="LR",
     help="initial learning rate",
@@ -93,7 +100,7 @@ parser.add_argument(
 parser.add_argument(
     "-p",
     "--print-freq",
-    default=10,
+    default=50,
     type=int,
     metavar="N",
     help="print frequency (default: 10)",
@@ -112,21 +119,21 @@ parser.add_argument(
     help="number of nodes for distributed training",
 )
 parser.add_argument(
-    "--rank", default=-1, type=int, help="node rank for distributed training"
+    "--rank", default=0, type=int, help="node rank for distributed training"
 )
 parser.add_argument(
     "--dist-url",
-    default="tcp://224.66.41.62:23456",
+    default="tcp://localhost:10001",
     type=str,
     help="url used to set up distributed training",
 )
 parser.add_argument(
-    "--dist-backend", default="nccl", type=str, help="distributed backend"
+    "--dist-backend", default="gloo", type=str, help="distributed backend"
 )
 parser.add_argument(
-    "--seed", default=None, type=int, help="seed for initializing training. "
+    "--seed", default=3407, type=int, help="seed for initializing training. "
 )
-parser.add_argument("--gpu", default=None, type=int, help="GPU id to use.")
+parser.add_argument("--gpu", default=0, type=int, help="GPU id to use.")
 parser.add_argument(
     "--multiprocessing-distributed",
     action="store_true",
@@ -174,7 +181,10 @@ parser.add_argument(
     type=float,
     help="balancing factor for image-level contrastive loss",
 )
-
+parser.add_argument(
+    "--debug", default = True,
+    type = bool,
+)
 
 def main():
     args = parser.parse_args()
@@ -202,6 +212,29 @@ def main():
 
     args.distributed = args.world_size > 1 or args.multiprocessing_distributed
 
+    
+
+    if not args.debug:
+        wandb.init(
+            project = "myPLRC",
+            config={
+                "learning_rate": args.lr,
+                "architecture": "ResNet50",
+                "dataset": args.dataset,
+                "testEnv":args.testEnv,
+                "epochs": args.epochs,
+                "batchSize":args.batch_size,
+                "loss_ts_ratio":args.ts_ratio,
+                "loss_cl_ratio":args.cl_ratio,
+                "loss_im_ratio":args.im_ratio,
+                "moco_m":args.moco_m,
+                "moco_k":args.moco_k,
+                "seed":args.seed,
+                "moco_dim":args.moco_dim,
+            }
+        )
+
+
     ngpus_per_node = torch.cuda.device_count()
     if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
@@ -213,6 +246,10 @@ def main():
     else:
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
+
+
+
+
 
 
 def main_worker(gpu, ngpus_per_node, args):
@@ -242,6 +279,31 @@ def main_worker(gpu, ngpus_per_node, args):
             world_size=args.world_size,
             rank=args.rank,
         )
+        
+        
+    if args.debug==False:
+        wandb.init(
+            project = "myPLRC",
+            config={
+                "learning_rate": args.lr,
+                "architecture": "ResNet50",
+                "dataset": args.dataset,
+                "epochs": args.epochs,
+                "batchSize":args.batch_size,
+                "loss_ts_ratio":args.ts_ratio,
+                "loss_cl_ratio":args.cl_ratio,
+                "loss_im_ratio":args.im_ratio,
+                "moco_m":args.moco_m,
+                "moco_k":args.moco_k,
+                "seed":args.seed,
+                "moco_dim":args.moco_dim,
+            }
+        )
+        
+        
+        
+        
+        
     # create model
     model = PLRC(args)
     print(model)
@@ -298,7 +360,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
     cudnn.benchmark = True
 
-    train_dataset = ImageNet(split="train", args=args, path=args.data)
+    train_dataset = DAPre(testEnv=args.testEnv,args=None, path=args.data)
+    # train_dataset = ImageNet(split="train", args=args, path=args.data)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -336,7 +399,8 @@ def main_worker(gpu, ngpus_per_node, args):
                 is_best=False,
                 filename="checkpoint_{:04d}.pth.tar".format(epoch),
             )
-
+    if args.debug==False:
+        wandb.finish()
 
 def train(train_loader, model, criterion, optimizer, cur_epoch, args):
     batch_time = AverageMeter("Time", ":6.3f")
@@ -389,16 +453,20 @@ def train(train_loader, model, criterion, optimizer, cur_epoch, args):
             masks = masks_cuda
             inputs_2 = inputs_2_cuda
             ids = ids.cuda(non_blocking=True)
-
-        loss_point, loss_moco = model(
+        # loss_image, loss_point
+        # 变量反了
+        # loss_point, loss_moco = model(
+        #     inputs, ids, cur_epoch, masks, obj, inputs_2, coord_multiv, coord_multiv_2
+        # )
+        loss_moco,loss_point = model(
             inputs, ids, cur_epoch, masks, obj, inputs_2, coord_multiv, coord_multiv_2
         )
 
-        loss_vec_point, to_vis_point = loss_point
+        loss_vec_point, to_vis_point,loss_ts,loss_cl = loss_point              
 
-        loss_vec_moco, to_vis_moco = loss_moco
+        loss_vec_moco, to_vis_moco = loss_moco 
 
-        loss = loss_vec_point.sum() + loss_vec_moco.sum() * args.im_ratio
+        loss = loss_vec_point.sum()* args.im_ratio + loss_vec_moco.sum() *(1-args.im_ratio)  #0.7
 
         losses.update(loss.item(), cls_labels.shape[0])
 
@@ -410,9 +478,11 @@ def train(train_loader, model, criterion, optimizer, cur_epoch, args):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % args.print_freq == 0:
-            progress.display(i)
-
+        if cur_iter % args.print_freq == 0:
+            progress.display(cur_iter)
+            if(not args.debug):
+                wandb.log({"lr":optimizer.param_groups[0]["lr"],"loss":loss,"loss_vec_moco":loss_vec_moco,"loss_vec_point":loss_vec_point,"loss_ts":loss_ts,"loss_cl":loss_cl})
+    return losses
 
 def save_checkpoint(state, is_best, filename="checkpoint.pth.tar"):
     torch.save(state, filename)
