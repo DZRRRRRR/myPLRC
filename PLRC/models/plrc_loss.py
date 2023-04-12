@@ -469,6 +469,7 @@ class SelfDistillation(nn.Module):
 
 
 class NCEAverage(Memory_Loss):
+    # TODO NCEloss 
     def build_loss(self):
         self.loss_fn = nn.CrossEntropyLoss()
         self.loss_fn_mask = nn.CrossEntropyLoss(reduction="none")

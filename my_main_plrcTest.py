@@ -443,15 +443,19 @@ def train(train_loader, model, criterion, optimizer, cur_epoch, args):
             inputs_2 = inputs_2_cuda
             ids = ids.cuda(non_blocking=True)
         # loss_image, loss_point
-        loss_point, loss_moco = model(
+        # 变量反了
+        # loss_point, loss_moco = model(
+        #     inputs, ids, cur_epoch, masks, obj, inputs_2, coord_multiv, coord_multiv_2
+        # )
+        loss_moco,loss_point = model(
             inputs, ids, cur_epoch, masks, obj, inputs_2, coord_multiv, coord_multiv_2
         )
 
-        loss_vec_point, to_vis_point = loss_point
+        loss_vec_point, to_vis_point,loss_ts,loss_cl = loss_point              
 
-        loss_vec_moco, to_vis_moco,loss_ts,loss_cl = loss_moco
+        loss_vec_moco, to_vis_moco = loss_moco 
 
-        loss = loss_vec_point.sum() + loss_vec_moco.sum() * args.im_ratio
+        loss = loss_vec_point.sum()* args.im_ratio + loss_vec_moco.sum() *(1-args.im_ratio)  #0.7
 
         losses.update(loss.item(), cls_labels.shape[0])
             
