@@ -245,20 +245,20 @@ class ResNet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
         if mode == "point":
-            B, C, H, W = x.shape
+            B, C, H, W = x.shape    # 8*2048*7*7
             feat = x
-            feat = feat.view(feat.size(0), -1)
-            x = x.permute(0, 2, 3, 1).reshape(B * H * W, C)
-            y_1 = self.fcs(x).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-            y_2_f, y_2_l = self.fcs_2(x)
-            y_2_f = y_2_f.reshape(B, H, W, -1).permute(0, 3, 1, 2)
-            y_2_l = y_2_l.reshape(B, H, W, -1).permute(0, 3, 1, 2)
+            feat = feat.view(feat.size(0), -1)  # 8* 100352
+            x = x.permute(0, 2, 3, 1).reshape(B * H * W, C)     # 392*2048
+            y_1 = self.fcs(x).reshape(B, H, W, -1).permute(0, 3, 1, 2)  # [8, 128, 7, 7]
+            y_2_f, y_2_l = self.fcs_2(x)            # [392, 256]  [392, 4096]
+            y_2_f = y_2_f.reshape(B, H, W, -1).permute(0, 3, 1, 2) # [8, 256, 7, 7]
+            y_2_l = y_2_l.reshape(B, H, W, -1).permute(0, 3, 1, 2) # [8, 4096, 7, 7]
 
         elif mode == "image":
             feat = self.avgpool(x)
             feat = feat.view(feat.size(0), -1)
             x = self.fcs(feat)
-
+        # 下采样的点 投影到了 128 256 4096维
         return y_1, y_2_f, y_2_l
 
 

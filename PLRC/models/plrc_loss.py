@@ -160,9 +160,9 @@ class Memory_Loss(General_Loss):
             student_temp=0.1,
             center_momentum=0.9,
         )
-
+        self.errorlist= []
         stdv = 1.0 / math.sqrt(self.dim / 3)
-
+        self.avgFeaturesCount = 0;
         for ni, ns in enumerate([65536]):
             append = ""
             if ni > 0:
@@ -360,7 +360,9 @@ class Memory_Loss(General_Loss):
                 p_2_ts_feat = p_2_ts[b_, hw_, :]
 
                 p_2_ts_feat = torch.cat([out_pos_t_feat_f, p_2_ts_feat], dim=-1)
-
+                # if(q_ts_feat.shape[0]>40000):
+                #     print("q_ts_feat: ", q_ts_feat.shape)
+                #     self.errorlist.append({ids.cpu():q_ts_feat.shape[0]})
                 loss_ts += self.self_distillation(
                     student_output=q_ts_feat,
                     teacher_output=p_2_ts_feat,
@@ -372,7 +374,7 @@ class Memory_Loss(General_Loss):
             if is_train:
                 self.update_memory(fxs_hist_pre)
 
-            return [loss, torch.zeros(1, dtype=torch.float32).cuda()]
+            return [loss, torch.zeros(1, dtype=torch.float32).cuda(),loss_ts,loss_cl]
 
         elif mode == "image":
 
@@ -438,6 +440,7 @@ class SelfDistillation(nn.Module):
         """
         Cross-entropy between softmax outputs of the teacher and student networks.
         """
+        # torch.cuda.empty_cache()
         student_out = student_output / self.student_temp
         temp = self.teacher_temp_schedule[epoch]
         teacher_out = F.softmax((teacher_output - self.center) / temp, dim=-1)
@@ -457,8 +460,9 @@ class SelfDistillation(nn.Module):
         Update center used for teacher output.
         """
         batch_center = torch.sum(teacher_output, dim=0, keepdim=True)
-        du.all_reduce(batch_center)
-        batch_center = batch_center / (len(teacher_output) * du.get_world_size())
+        # du.all_reduce(batch_center)
+        # batch_center = batch_center / (len(teacher_output) * du.get_world_size())
+        batch_center = batch_center / len(teacher_output)
         self.center = self.center * self.center_momentum + batch_center * (
             1 - self.center_momentum
         )

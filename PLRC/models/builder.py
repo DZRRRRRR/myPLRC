@@ -62,7 +62,9 @@ class PLRC(nn.Module):
         """
         # gather from all gpus
         batch_size_this = x.shape[0]
-        x_gather = concat_all_gather(x)
+        # NOTE 多卡改单卡
+        x_gather = x
+        # x_gather = concat_all_gather(x)
         batch_size_all = x_gather.shape[0]
 
         num_gpus = batch_size_all // batch_size_this
@@ -71,13 +73,14 @@ class PLRC(nn.Module):
         idx_shuffle = torch.randperm(batch_size_all).cuda()
 
         # broadcast to all gpus
-        torch.distributed.broadcast(idx_shuffle, src=0)
+        # torch.distributed.broadcast(idx_shuffle, src=0) 
 
         # index for restoring
         idx_unshuffle = torch.argsort(idx_shuffle)
 
         # shuffled index for this gpu
-        gpu_idx = torch.distributed.get_rank()
+        gpu_idx = 0
+        # gpu_idx = torch.distributed.get_rank()
         idx_this = idx_shuffle.view(num_gpus, -1)[gpu_idx]
 
         return x_gather[idx_this], idx_unshuffle
@@ -89,23 +92,26 @@ class PLRC(nn.Module):
         *** Only support DistributedDataParallel (DDP) model. ***
         """
         batch_size_this = x.shape[0]
-        x_gather = concat_all_gather(x)
+        x_gather = x
+        # TODO 多卡改单卡
+        # x_gather = concat_all_gather(x)
         batch_size_all = x_gather.shape[0]
 
         num_gpus = batch_size_all // batch_size_this
-        gpu_idx = torch.distributed.get_rank()
+        gpu_idx = 0
+        # gpu_idx = torch.distributed.get_rank()
         idx_this = idx_unshuffle.view(num_gpus, -1)[gpu_idx]
 
         return x_gather[idx_this]
 
     def forward(
         self,
-        xs,
+        xs,                     # input images
         ids,
         cur_epoch,
         masks_all,
         obj,
-        xs_2=None,
+        xs_2=None,              # input images2
         coord_multiv=None,
         coord_multiv_2=None,
     ):
@@ -125,15 +131,17 @@ class PLRC(nn.Module):
                 with torch.no_grad():
                     self._momentum_update_key_encoder()
 
-                    x, idx_unshuffle = self._batch_shuffle_ddp(gx)
+                    # x, idx_unshuffle = self._batch_shuffle_ddp(gx)
+                    x = gx
 
                     fx, fx_2_f, fx_2, px = self.encoder_k(x, mode="point", dy=True)
 
-                    fx = self._batch_unshuffle_ddp(fx, idx_unshuffle)
+                    # fx = self._batch_unshuffle_ddp(fx, idx_unshuffle)
 
                     if fx_2 is not None:
-                        fx_2 = self._batch_unshuffle_ddp(fx_2, idx_unshuffle)
-                        fx_2_f = self._batch_unshuffle_ddp(fx_2_f, idx_unshuffle)
+                        # fx_2 = self._batch_unshuffle_ddp(fx_2, idx_unshuffle)
+                        # fx_2_f = self._batch_unshuffle_ddp(fx_2_f, idx_unshuffle)
+                        pass
                     else:
                         fx_2 = fx
 
@@ -274,7 +282,7 @@ class PLRC(nn.Module):
                     else:
                         x = gx_2
                     fx, fx_2_f, fx_2, px = self.encoder_k(x, mode="point")
-
+                    # fx [8, 128, 7, 7]; fx_2_f [8, 256, 7, 7]; fx_2 [8, 4096, 7, 7]
                     if input_shuffle and self.training:
                         fx = self._batch_unshuffle_ddp(fx, idx_restore)
                         if fx_2 is not None:
@@ -363,7 +371,7 @@ class PLRC(nn.Module):
             fxs_hist_ts_f=fxs_hist_ts_f,
             fxs_hist_pre_ts_f=fxs_hist_pre_ts_f,
         )
-
+        # torch.cuda.empty_cache()
         return loss_image, loss_point
 
 

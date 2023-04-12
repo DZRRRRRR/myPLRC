@@ -12,8 +12,8 @@ import os
 
 import torch
 import torch.utils.data
-# import PLRC.datasets.transforms as transforms
-import transforms
+import PLRC.datasets.transforms as transforms
+# import transforms
 import torchvision as tv
 import torchvision.transforms.functional as tvf
 import io
@@ -26,10 +26,11 @@ import json
 rng = np.random.default_rng()
 
 
-class ImageNet(torch.utils.data.Dataset):
-    def __init__(self, split, args, path=""):
+class DAPre(torch.utils.data.Dataset):
+    def __init__(self, testEnv, args, path=""):
+        self.test_envs = testEnv
         self.path = path
-        self._split = split
+        self.testEnv = testEnv
         self._first_k = 0
         self.random_resizedcrop = None
         self._construct_imdb()
@@ -92,6 +93,14 @@ class ImageNet(torch.utils.data.Dataset):
                 tv.transforms.ToTensor(),
             ]
         )
+        
+        self.errorSet = []
+        errorlist = np.load("./errorlist.npy",allow_pickle=True)
+        for d in errorlist:
+            dStr = d.keys().__str__()
+            self.errorSet.append(int(dStr.split('[')[-1].split(']')[0]))
+    
+        
 
     def _apply_single_transformation(self, n, im):
         if n % 2 == 1 and hasattr(self, "_transform_prime"):
@@ -101,28 +110,43 @@ class ImageNet(torch.utils.data.Dataset):
 
     def _construct_imdb(self):
         """Constructs the imdb."""
-        data_dir = os.path.join(self.path, self._split)
-        assert os.path.exists(data_dir), "{} dir not found".format(data_dir)
+        environments = [f.name for f in os.scandir(self.path) if f.is_dir()]
+        environments = sorted(environments)
+        
+
+        
+        
+        # data_dir = os.path.join(self.path, self._split)
+        # assert os.path.exists(data_dir), "{} dir not found".format(data_dir)
 
         # Map ImageNet class ids to contiguous ids
-        self._class_ids = os.listdir(data_dir)
+        self._class_ids = os.listdir(os.path.join(self.path,environments[0]))
         self._class_id_cont_id = {v: i for i, v in enumerate(self._class_ids)}
+
+        # Map Domain to contiguous ids
+        self._env_id_cont_id = {v: i for i, v in enumerate(environments)}
 
         # Construct the image db
         self._imdb = []
-        for class_id in self._class_ids:
-            cont_id = self._class_id_cont_id[class_id]
-            im_dir = os.path.join(data_dir, class_id)
-            for ii, im_name in enumerate(sorted(os.listdir(im_dir))):
-                if self._first_k and ii >= self._first_k:
-                    break
-
-                self._imdb.append(
-                    {
-                        "im_path": os.path.join(im_dir, im_name),
-                        "class": cont_id,
-                    }
-                )
+        
+        for i, environment in enumerate(environments):
+            env_id = self._env_id_cont_id[environment]
+            if (env_id is not self.test_envs):
+                data_dir = os.path.join(self.path,environment)
+                for class_id in self._class_ids:
+                    cont_id = self._class_id_cont_id[class_id]
+                    im_dir = os.path.join(data_dir, class_id)
+                    for ii, im_name in enumerate(sorted(os.listdir(im_dir))):
+                        if self._first_k and ii >= self._first_k:
+                            break
+                        
+                        self._imdb.append(
+                            {
+                                "env" : env_id,
+                                "im_path": os.path.join(im_dir, im_name),
+                                "class": cont_id,
+                            }
+                        )
 
         self.num_classes = len(self._imdb)
 
@@ -132,11 +156,22 @@ class ImageNet(torch.utils.data.Dataset):
         else:
             scales = [None, None]
             repeats = [1]
+        
+        # while index in self.errorSet :
+        #     index = index + 1
+                    
         flag = 1
         anno_mask = True
         im = tv.datasets.folder.default_loader(self._imdb[index]["im_path"])
 
         width, height = im.size
+        # TODO　先将尺度小于２２４的resize到224
+        # if(width<self.im_size or height<self.im_size or width/height>2 or height/width >2):
+        temp = min(width,height)
+        factor = self.im_size/temp + np.random.rand()/2
+        im = im.resize((int(np.ceil(temp*factor)),int(np.ceil(temp*factor))))
+        width, height = im.size
+        
         im_name = self._imdb[index]["im_path"].split("/")[-1].split(".")[0]
         pano_mask = self.pano_mask.resize((width, height), resample=Image.NEAREST)
 
@@ -314,6 +349,15 @@ class ImageNet(torch.utils.data.Dataset):
         return len(self._imdb)
 
 
+
+
+
 if __name__=="__main__":
-    dataset = ImageNet("Art",None,"D:/chu/workspace/dataset/OfficeHomeDataset")
-    pass
+    dataset = DAPre(0,None,"D:/chu/workspace/dataset/OfficeHomeDataset")
+    # print(dataset.__getitem__(3489))
+    i = 0
+    while(True):
+        dataset.__getitem__(i)
+        i = i + 1
+        print(i)
+    print(dataset.__getitem__(0))

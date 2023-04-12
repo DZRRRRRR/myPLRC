@@ -26,6 +26,8 @@ To do unsupervised pre-training of a ResNet-50 model on ImageNet in an 8-gpu mac
 ```
 python main_plrc.py \
   --dist-url 'tcp://localhost:10001' --multiprocessing-distributed --world-size 1 --rank 0 
+
+python my_main_plrc.py --dist-url 'tcp://localhost:10001' --multiprocessing-distributed --world-size 1 --rank 0 
 ```
 This script uses all the default hyper-parameters as described in the PRLC paper.
 
